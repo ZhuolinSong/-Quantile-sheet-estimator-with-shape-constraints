@@ -1,0 +1,86 @@
+---
+Title: "Presentation: cq.reg"
+author: ""
+date: ""
+---
+
+```{r, include=F}
+devtools::load_all()
+```
+
+```{r loading}
+load("sim_smooth.RData")
+v_sptau <- 10 ^ (-5 : 0); v_spx <- 10^ (-5:4)
+```
+
+```{r, draw functions,  include=F}
+# linear
+f1 <- function(x) {0.2 + 0.4 * x}
+# logarithm
+f2 <- function(x) {log(x)}
+# sinusoidal
+f3 <- function(x) {sin(2 * pi * x)}
+# square root sinusoidal
+f4 <- function(x) {
+    sqrt(x * (1 - x)) * sin(2 * pi * (1 + 2 ^ (-7 / 5)) / (x + 2 ^ (-7 / 5)))
+}
+obs_f <- function(sim, x) {
+    if (sim == 1) {
+        f1(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 2) {
+        f2(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 3) {
+        f3(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 4) {
+        f4(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    }
+}
+truth_f <- function(sim, x, tau) {
+    if (sim == 1) {
+        f1(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 2) {
+        f2(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 3) {
+        f3(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 4) {
+        f4(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    }
+}
+draw_qs <- function(x, y, sim, qs_fit, ...) {
+    plot(x, y,
+        pch = 20, cex = 0.3, main = "quantile sheets",
+        sub = paste("smooth=", 0.1), col = "grey")
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- predict(qs_fit, data.frame(tau = tau, x1 = x))
+        truth <- truth_f(sim, x, tau)
+        lines(x, truth, col = "grey", lty = 2)
+        lines(x, curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = taus, col = seq_along(taus) + 1,
+        lwd = 1, cex = 1, bty = "n"
+    )
+}
+
+```
+
+```{r tune1 draw, out.width = "100%", fig.dim = c(12, 18)}
+lapply(sim_smooth, inner <- function(gri) {
+        lapply(gri, fn <- function(gr) {
+            if (!is.atomic(gr)) {
+                rowMeans(gr$loss)
+            } else { NA }
+        })
+})
+par(mfrow = c(3, 2))
+for (i in seq_along(sim_smooth)) {
+    for (j in seq_along(sim_smooth[[i]])) {
+        if (!is.atomic(sim_smooth[[i]][[j]])) {
+            main <- paste("Smoothing:", c(v_sptau[i], v_spx[j]))
+            sub <- paste("MSE:", rowMeans(sim_smooth[[i]][[j]]$loss))
+            cq_regplot(sim_smooth[[i]][[j]]$model, main = main, sub = sub)
+        }
+    }
+}
+```

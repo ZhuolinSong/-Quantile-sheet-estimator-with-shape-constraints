@@ -1,0 +1,39 @@
+---
+Title: "Presentation: cq.reg"
+author: ""
+date: ""
+---
+
+```{r, include=F}
+devtools::load_all()
+library(parallel)
+ncores <- 1
+```
+
+```{r loading}
+load("simulation/rmd/sim_ntaus.RData")
+taus <- seq(0.05, 0.95, length.out = 10)
+```
+
+```{r tune1 draw, out.width = "100%", fig.dim = c(12, 6)}
+v_ntau <- 2^ (3:9)
+v_gmean <- c("linear", "log", "sin", "lsin", "sqrtsin")
+v_xsig <- c("const", "linear", "quad")
+v_derr <- c("norm", "chisq3", "t3", "t1")
+
+sim_ntaus <- mclapply(seq_along(v_gmean), gmean_loop <- function(gmean) {
+    mclapply(seq_along(v_xsig), xsig_loop <- function(xsig) {
+        mclapply(seq_along(v_derr), derr_loop <- function(derr) {
+            mclapply(seq_along(v_ntau), ntau_loop <- function(ntaus) {
+                sim <- sim_ntaus[[gmean]][[xsig]][[derr]][[ntaus]]
+                if (!is.atomic(sim)) {
+                    print(rowMeans(sim$L2loss)[1:2])
+                    print((sim$time)[1:2, ])
+                } else {
+                    print(0)
+                }
+            }, mc.cores = ncores)
+        }, mc.cores = ncores)
+    }, mc.cores = ncores)
+}, mc.cores = ncores)
+```

@@ -1,0 +1,363 @@
+---
+Title: "Method Comparison: cq.reg"
+author: ""
+date: ""
+---
+```{r}
+knitr::opts_chunk$set(message = FALSE)
+```
+```{r, loading, include=F}
+devtools::load_all()
+library(quantregGrowth)
+library(quantreg)
+set.seed(202106)
+
+taus <- c(0.05, 0.25, 0.5, 0.75, 0.95)
+col.plot <- c("grey", "black", "red", "green", "blue", "cyan")
+lgd <- c(
+    expression(paste(tau, "=0.05")),
+    expression(paste(tau, "=0.25")),
+    expression(paste(tau, "=0.5")),
+    expression(paste(tau, "=0.75")),
+    expression(paste(tau, "=0.95"))
+)
+
+lgd <- rev(lgd)
+
+n <- 400
+# linear
+f1 <- function(x) {0.2 + 0.4 * x}
+# logarithm
+f2 <- function(x) {log(x)}
+# sinusoidal
+f3 <- function(x) {sin(2 * pi * x)}
+# square root sinusoidal
+f4 <- function(x) {
+    sqrt(x * (1 - x)) * sin(2 * pi * (1 + 2 ^ (-7 / 5)) / (x + 2 ^ (-7 / 5)))
+}
+obs_f <- function(sim, x) {
+    if (sim == 1) {
+        f1(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 2) {
+        f2(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 3) {
+        f3(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 4) {
+        f4(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    }
+}
+
+truth_f <- function(sim, x, tau) {
+    if (sim == 1) {
+        f1(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 2) {
+        f2(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 3) {
+        f3(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 4) {
+        f4(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    }
+}
+
+```
+
+```{r, quantile sheets,  include=F}
+quantile_sheets <- function(x, y, sim, draw = F, ...) {
+    #quantile sheets
+    qs_fit <- qs_scam(x, y, ...)
+
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3, main = "quantile sheets",
+            sub = paste("smooth=", 0.1), col = "grey")
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- predict(qs_fit, data.frame(tau = tau, x1 = x))
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+
+    return(qs_fit)
+}
+
+smooth_quantiles <- function(x, y, sim, draw = F, ...) {
+    #smooth quan
+    smooth_fit <- f_smoothbbgd(y, x, ...)
+
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3, main = "smooth_quan",
+            sub = paste("smooth=", 0.1), col = "grey")
+
+        curves <- cq_prediction(taus, smooth_fit)
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- curves[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+    return(smooth_fit)
+}
+
+constrained_quantiles <- function(x, y, sim, draw = F, ...) {
+    #coco_quan
+    coco_fit <- f_descent(y, x, ...)
+
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3, main = "constrained_quan",
+            sub = paste("smooth", 0.1), col = "grey")
+
+        curves <- cq_prediction(taus, coco_fit)
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- curves[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+    return(coco_fit)
+}
+
+
+constrained_reg <- function(x, y, sim, draw = F, ...) {
+    cq_fit <- cq.reg(x, y, ...)
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3, main = "cq.reg",
+            sub = paste("span=", 0.05), col = "grey")
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- predict(cq_fit, data.frame(tau = tau, x1 = x))
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+    return(cq_fit)
+}
+
+quantile_regession <- function(x, y, sim, constr, draw = F, ...) {
+    fit_quanreg <- list()
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        fit_quanreg[[i]] <- rqss(y ~ qss(x, constraint = constr), tau = tau, data = data.frame(x, y))
+    }
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3,
+            main = "quantreg", col = "grey"
+        )
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- fit_quanreg[[i]]$coef[1] + fit_quanreg[[i]]$coef[-1]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x[-1], curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+    return(fit_quanreg)
+}
+
+grow_quantiles2 <- function(x, y, sim, draw = F, ...) {
+    # quantregGrowth non-crossing+ monotone
+    fit_wp <- gcrq(y ~ ps(x, monotone = 1),
+                tau = taus, data = data.frame(x, y), ...)
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3,
+            main = "quantregGrowth w L1 penalty", col = "grey"
+        )
+        fitted_y <- fit_wp$fitted.values
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- fitted_y[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+    return(fit_wp)
+}
+
+```
+# Simulated Data Examples
+## logarithm log(x)
+```{r, log code, include = F, out.width = "100%", fig.dim = c(18, 12)}
+sim_code2 <- function(m = 20, sim = 2) {
+    par(mfrow = c(3, 2))
+    # L2 loss
+    L2loss <- matrix(rep(0, 5 * 6), nrow = 6)
+    colnames(L2loss) <- c(.05, .25, .5, .75, .95)
+    rownames(L2loss) <- c("quantile sheets", "smooth_quan", "coco_quan",
+                            "cq_reg", "quantreg",  "quantregGrowth")
+    ind_draw <- T
+    for (j in seq(m)) {
+        #train
+        x <- runif(n); ord <- order(x)
+        x <- x[ord]
+        y <- obs_f(sim, x)
+        # test
+        test_x <- sort(runif(n, min(x), max(x)))
+        #quantile sheets
+        qs_fit <- quantile_sheets(x, y, sim, draw = ind_draw,
+                    maxit = 10, ntaus = 10, arg_bs = c("tedmi", "ps"),
+                    opt = "bfgs", dims = c(10, 15), sp = rep(0.001, 2))
+        #smooth quan
+        smooth_fit <- smooth_quantiles(x, y, sim, draw = ind_draw,
+                    v_k0 = c(6, 11), v_m = c(4, 4), init = NULL,
+                    v_smooth = rep(0.1, 3), s_ntau = 50,
+                    maxit = 50, eps = 1e-3, eta = 1e-3)
+        #coco_quan
+        coco_fit <- constrained_quantiles(x, y, sim, draw = ind_draw,
+                    v_k0 = c(6, 11), v_m = c(4, 4), init = NULL,
+                    alpha = 0.1, bet = 0.8, v_smooth = rep(0.1, 3),
+                    maxit = 200, eps = 1e-3)
+        # cq.reg
+        cq_fit <- constrained_reg(x, y, sim, draw = ind_draw,
+                    arg_bs = c("tedmi", "cr"), opt = "bfgs",
+                    dims = c(15, 10), span = 0.05)
+        # quantreg
+        quan_fit <- quantile_regession(x, y, sim, "I", draw = ind_draw)
+        # quantregGrowth non-crossing+ monotone
+        fit_wp <- grow_quantiles2(x, y, sim, draw = ind_draw)
+
+        test_fit <- predict(fit_wp, data.frame(x = test_x))
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            truth <- truth_f(sim, test_x, tau)
+            L2loss[1, i] <- L2loss[1, i] + mean((c(predict(qs_fit, data.frame(tau = tau, x1 = test_x))) - truth)^2)
+            L2loss[2, i] <- L2loss[2, i] + mean((c(cq_prediction(tau, smooth_fit, newdata = test_x)) - truth)^2)
+            L2loss[3, i] <- L2loss[3, i] + mean((c(cq_prediction(tau, coco_fit, newdata = test_x)) - truth)^2)
+            L2loss[4, i] <- L2loss[4, i] + mean((predict(cq_fit, data.frame(x1 = test_x, tau = tau)) - truth)^2)
+            L2loss[5, i] <- L2loss[5, i] + mean((predict(quan_fit[[i]], data.frame(x = test_x)) - truth)^2)
+            L2loss[6, i] <- L2loss[6, i] + mean((test_fit[, i] - truth)^2)
+        }
+        ind_draw <- F
+    }
+    return(L2loss / m)
+}
+```
+
+### L2loss
+```{r, logloss,  out.width = "100%", fig.dim = c(18, 12)}
+L2loss <- sim_code2(1, 2)
+round(L2loss, 3)
+round(rowMeans(L2loss), 3)
+```
+
+## square root sinusoidal
+```{r, square root code,  include=F}
+grow_quantiles4 <- function(x, y, sim, draw = F, ...) {
+    # quantregGrowth non-crossing+ monotone
+    fit_wp <- gcrq(y ~ ps(x),
+                tau = taus, data = data.frame(x, y), ...)
+    if (draw) {
+        plot(x, y,
+            pch = 20, cex = 0.3,
+            main = "quantregGrowth w L1 penalty", col = "grey"
+        )
+        fitted_y <- fit_wp$fitted.values
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- fitted_y[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+        legend("topleft",
+            lty = 1, legend = lgd, col = 6:2,
+            lwd = 1, cex = 1, bty = "n"
+        )
+    }
+    return(fit_wp)
+}
+
+sim_code4 <- function(m = 20, sim = 4) {
+    par(mfrow = c(3, 2))
+    # L2 loss
+    L2loss <- matrix(rep(0, 5 * 6), nrow = 6)
+    colnames(L2loss) <- c(.05, .25, .5, .75, .95)
+    rownames(L2loss) <- c("quantile sheets", "smooth_quan", "coco_quan",
+                            "cq_reg", "quantreg",  "quantregGrowth")
+    ind_draw <- T
+    for (j in seq(m)) {
+        #train
+        x <- runif(n); ord <- order(x)
+        x <- x[ord]
+        y <- obs_f(sim, x)
+        # test
+        test_x <- sort(runif(n, min(x), max(x)))
+        #quantile sheets
+        qs_fit <- quantile_sheets(x, y, sim, draw = ind_draw,
+                    maxit = 10, ntaus = 10, arg_bs = c("tesmi1", "ps"),
+                    opt = "bfgs", dims = c(10, 15), sp = rep(0.05, 2))
+        #smooth quan
+        smooth_fit <- smooth_quantiles(x, y, sim, draw = ind_draw,
+                    v_k0 = c(6, 11), v_m = c(4, 4), init = NULL,
+                    v_smooth = rep(0.05, 3), s_ntau = 50,
+                    maxit = 50, eps = 1e-3, eta = 1e-3)
+        #coco_quan
+        coco_fit <- constrained_quantiles(x, y, sim, draw = ind_draw,
+                    v_k0 = c(6, 11), v_m = c(4, 4), init = NULL,
+                    alpha = 0.1, bet = 0.8, v_smooth = rep(0.1, 3),
+                    maxit = 200, eps = 1e-3)
+        # cq.reg
+        cq_fit <- constrained_reg(x, y, sim, draw = ind_draw,
+                    arg_bs = c("tesmi1", "cr"), opt = "bfgs",
+                    dims = c(15, 10), span = 0.05)
+        # quantreg
+        quan_fit <- quantile_regession(x, y, sim, "N", draw = ind_draw)
+        # quantregGrowth non-crossing+ monotone
+        fit_wp <- grow_quantiles4(x, y, sim, draw = ind_draw)
+
+        test_fit <- predict(fit_wp, data.frame(x = test_x))
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            truth <- truth_f(sim, test_x, tau)
+            L2loss[1, i] <- L2loss[1, i] + mean((c(predict(qs_fit, data.frame(tau = tau, x1 = test_x))) - truth)^2)
+            L2loss[2, i] <- L2loss[2, i] + mean((c(cq_prediction(tau, smooth_fit, newdata = test_x)) - truth)^2)
+            L2loss[3, i] <- L2loss[3, i] + mean((c(cq_prediction(tau, coco_fit, newdata = test_x)) - truth)^2)
+            L2loss[4, i] <- L2loss[4, i] + mean((predict(cq_fit, data.frame(x1 = test_x, tau = tau)) - truth)^2)
+            L2loss[5, i] <- L2loss[5, i] + mean((predict(quan_fit[[i]], data.frame(x = test_x)) - truth)^2)
+            L2loss[6, i] <- L2loss[6, i] + mean((test_fit[, i] - truth)^2)
+        }
+        ind_draw <- F
+    }
+    return(L2loss / m)
+}
+```
+```{r, squareloss, out.width = "100%", fig.dim = c(18, 12)}
+L2loss <- sim_code4(1, 4)
+round(L2loss, 3)
+round(rowMeans(L2loss), 3)
+```

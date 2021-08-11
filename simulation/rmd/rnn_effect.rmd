@@ -1,0 +1,135 @@
+---
+Title: "Effect of rnn: cq.reg"
+author: ""
+date: ""
+---
+
+```{r, include=F}
+devtools::load_all()
+```
+
+# Simulated Data Examples
+```{r simulation function, include=F}
+set.seed(202104)
+n <- 400
+x <- runif(n)
+ord <- order(x)
+x_ord <- x[ord]
+sigma <- 0.4 * (0.5 + x)
+residual <- rnorm(n, mean = rep(0, n), sd = sigma)
+# linear
+f1 <- function(x) {
+    0.2 + 0.4 * x
+}
+# logarithm
+f2 <- function(x) {
+    log(x)
+}
+# sinusoidal
+f3 <- function(x) {
+    sin(2 * pi * x)
+}
+# square root sinusoidal
+f4 <- function(x) {
+    sqrt(x * (1 - x)) * sin(2 * pi * (1 + 2 ^ (-7 / 5)) / (x + 2 ^ (-7 / 5)))
+}
+
+# non-crosing QR
+f <- function(i, arg_bs = c("tesmi2", "cr"), opt = "efs", knots = c(10, 10),
+                span = 0.1, bandwidth=NULL, rnn=NULL, knn=NULL,
+                analysis = F, visual = T, compare = T, draw_compare = F, ...) {
+    if (i == 1) {
+        y <- f1(x) + residual
+        y_ord <- f1(x_ord)
+    }
+    if (i == 2) {
+        y <- f2(x) + residual
+        y_ord <- f2(x_ord)
+    }
+    if (i == 3) {
+        y <- f3(x) + residual
+        y_ord <- f3(x_ord)
+    }
+    if (i == 4) {
+        y <- f4(x) + residual
+        y_ord <- f4(x_ord)
+    }
+
+    fit <- cq.reg(x, y, bivar = T, arg_bs,
+                opt, knots,
+                span, bandwidth, rnn, knn,
+                analysis
+                )
+
+    if (analysis) {
+        print(summary(fit))
+    }
+
+    if (visual) {
+        cq_plot(fit, ...)
+    }
+
+    ## l2loss
+    L2loss <- matrix(rep(0, 9), nrow = 1)
+    colnames(L2loss) <- (1:9) / 10
+    if (compare) {
+        for (i in 1:9) {
+            tau <- i / 10
+            curve <- predict(fit, data.frame(x1 = x_ord, tau = tau))
+            truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+            diff <- curve - truth
+            L2loss[1, i] <- mean(diff^2)
+            if (draw_compare) {
+                dev.new()
+                plot(x_ord, y_ord)
+                lines(x_ord, truth, col = 2)
+                lines(x_ord, curve, col = 3)
+            }
+        }
+    }
+
+    return(L2loss)
+}
+```
+
+## logarithm log(x)
+#### rnn = $\{0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1\}$
+```{r simulation1, out.width = "100%", fig.dim = c(12, 12)}
+v_rnn <- c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)
+par(mfrow = c(2, 2))
+m_loss <- matrix(0, nrow = length(v_rnn), ncol = 9)
+colnames(m_loss) <- paste0("tau=", (1:9) / 10)
+rownames(m_loss) <- paste0("rnn=", v_rnn)
+for (i in seq_along(v_rnn)) {
+    rnn <- v_rnn[i]
+    m_loss[i, ] <- f(2, arg_bs = c("tedmi"), span = NULL, rnn = rnn,
+        main = paste("rnn=", rnn))
+}
+```
+
+### L2 loss
+```{r}
+round(m_loss, 5)
+round(rowMeans(m_loss), 5)
+```
+## square root sinusoidal
+#### $\sqrt{x (1 - x)}  \sin(2  \pi  (1 + 2^{-7 / 5}) / (x + 2^{-7 / 5}))$
+#### rnn = $\{0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1\}$
+```{r simulation2, out.width = "100%", fig.dim = c(12, 12)}
+v_rnn <- c(0.01, 0.03, 0.05, 0.07, 0.1, 0.3, 0.5, 0.7, 0.9, 1)
+par(mfrow = c(2, 2))
+m_loss <- matrix(0, nrow = length(v_rnn), ncol = 9)
+colnames(m_loss) <- paste0("tau=", (1:9) / 10)
+rownames(m_loss) <- paste0("rnn=", v_rnn)
+for (i in seq_along(v_rnn)) {
+    rnn <- v_rnn[i]
+    m_loss[i, ] <- f(4, span = NULL, rnn = rnn, knots = c(15, 5),
+        main = paste("rnn=", rnn))
+}
+```
+
+### L2 loss
+```{r}
+round(m_loss, 5)
+round(rowMeans(m_loss), 5)
+```

@@ -1,0 +1,356 @@
+---
+Title: "Method Comparison: cq.reg"
+author: ""
+date: ""
+---
+```{r}
+knitr::opts_chunk$set(message = FALSE)
+```
+```{r, loading, include=F}
+devtools::load_all()
+library(quantregGrowth)
+library(quantreg)
+library(QuantifQuantile)
+
+
+
+taus <- c(0.05, 0.25, 0.5, 0.75, 0.95)
+col.plot <- c("grey", "black", "red", "green", "blue", "cyan")
+lgd <- c(
+    expression(paste(tau, "=0.05")),
+    expression(paste(tau, "=0.25")),
+    expression(paste(tau, "=0.5")),
+    expression(paste(tau, "=0.75")),
+    expression(paste(tau, "=0.95"))
+)
+
+lgd <- rev(lgd)
+```
+
+```{r simulation, include=F}
+set.seed(202104)
+n <- 400
+x <- runif(n)
+ord <- order(x)
+x_ord <- x[ord]
+sigma <- 0.4 * (0.5 + x)
+residual <- rnorm(n, mean = rep(0, n), sd = sigma)
+# linear
+f1 <- function(x) {
+    0.2 + 0.4 * x
+}
+# logarithm
+f2 <- function(x) {
+    log(x)
+}
+# sinusoidal
+f3 <- function(x) {
+    sin(2 * pi * x)
+}
+# square root sinusoidal
+f4 <- function(x) {
+    sqrt(x * (1 - x)) * sin(2 * pi * (1 + 2 ^ (-7 / 5)) / (x + 2 ^ (-7 / 5)))
+}
+```
+# Simulated Data Examples
+## logarithm log(x)
+```{r log code, include = F, out.width = "100%", fig.dim = c(12, 12)}
+log_code <- function() {
+    y <- f2(x) + residual
+    y_ord <- f2(x_ord)
+    par(mfrow = c(2, 2))
+
+    # cq.reg
+    cq_fit <- cq.reg(x, y,
+        bivar = T, c("tedmi", "cr"),
+        "bfgs", c(15, 10),
+        span = 0.05
+    )
+    plot(x, y,
+        pch = 20, cex = 0.3, main = "cq.reg",
+        sub = paste("span=", 0.05), col = "grey"
+    )
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- predict(cq_fit, data.frame(x1 = x_ord, tau = tau))
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+        lines(x_ord, curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    # quantreg
+    plot(x, y,
+        pch = 20, cex = 0.3,
+        main = "quantreg", col = "grey"
+    )
+    fit_quanreg <- list()
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        fit_quanreg[[i]] <- rqss(y ~ qss(x, constraint = "I"),
+                                tau = tau, data = data.frame(x, y))
+        curve <- fit_quanreg[[i]]$coef[1] + fit_quanreg[[i]]$coef[-1]
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+        lines(x_ord[-1], curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    # QuantifQuantile
+    fit_QQ <- QuantifQuantile(x_ord, y[ord], alpha = taus, x = x_ord, testN = 37)
+    ## plot,
+    plot(fit_QQ,
+        col.plot = c("grey", 2:6), xlab = "x", ylab = "y",
+        pch = 20, main = "QuantifQuantile"
+    )
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- fit_QQ$hatq_opt[i, ]
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+    }
+    # quantregGrowth non-crossing+ monotone
+    fit_wp <- gcrq(y ~ ps(x, monotone = 1), tau = taus, data = data.frame(x, y))
+    ## plot
+    plot(x, y,
+        pch = 20, cex = 0.3,
+        main = "quantregGrowth w L1 penalty", col = "grey"
+    )
+    fitted_y <- fit_wp$fitted.values[ord, ]
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- fitted_y[, i]
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+        lines(x_ord, curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    # L2 loss
+    L2loss <- matrix(rep(0, 5 * 4), nrow = 4)
+    colnames(L2loss) <- c(.05, .25, .5, .75, .95)
+    rownames(L2loss) <- c(
+        "cq_reg", "quantreg", "QuantifQuantile", "quantregGrowth")
+
+    for (j in 1:20) {
+    ## test x
+    test_x <- runif(n, min(x), max(x))
+    test_y <- f2(test_x)
+    test_sigma <- 0.4 * (0.5 + test_x)
+
+
+    # True Quantiles
+    true_logquan <- function(x, tau) {
+        log(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    }
+
+    # Quantiles
+    taus <- c(.05, .25, .5, .75, .95)
+
+
+        # cq.reg
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            truth <- true_logquan(test_x, taus[i])
+            L2loss[1, i] <- L2loss[1, i] + mean((predict(cq_fit, data.frame(x1 = test_x, tau = tau)) - truth)^2)
+        }
+
+
+    # quantreg
+    for (i in seq_along(taus)) {
+        fit <- fit_quanreg[[i]]
+        truth <- true_logquan(test_x, taus[i])
+        L2loss[2, i] <- L2loss[2, i] + mean((predict(fit, data.frame(x = test_x)) - truth)^2)
+    }
+
+
+    # QuantifQuantile
+    fit_QQ_new <- QuantifQuantile(x, y, x = test_x, alpha = taus, testN = 37)
+    ## l2loss
+    for (i in seq_along(taus)) {
+        truth <- true_logquan(test_x, taus[i])
+        L2loss[3, i] <- L2loss[3, i] + mean((fit_QQ_new$hatq_opt[i, ] - truth)^2)
+    }
+
+    # quantregGrowth non-crossing+ monotone
+        ## l2loss
+    test_fit <- predict(fit_wp, data.frame(x = test_x))
+    for (i in seq_along(taus)) {
+        truth <- true_logquan(test_x, taus[i])
+        L2loss[4, i] <- L2loss[4, i] + mean((test_fit[, i] - truth)^2)
+    }
+
+    #print(j)
+    }
+    return(L2loss)
+}
+```
+
+### L2loss
+```{r,  out.width = "100%", fig.dim = c(12, 12)}
+L2loss <- log_code()
+round(L2loss / 20, 3)
+round(rowMeans(L2loss / 20), 3)
+```
+
+## square root sinusoidal with span = 0.03
+```{r, square code, include=F, out.width = "100%", fig.dim = c(12, 12)}
+sin_code <- function() {
+
+    y <- f4(x) + residual
+    y_ord <- f4(x_ord)
+    par(mfrow = c(2, 2))
+
+    # cq.reg
+    cq_fit <- cq.reg(x, y,
+        bivar = T, c("tesmi2", "cr"),
+        "bfgs", c(15, 10),
+        span = 0.03
+    )
+    plot(x, y,
+        pch = 20, cex = 0.3, main = "cq.reg",
+        sub = paste("span=", 0.03), col = "grey"
+    )
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- predict(cq_fit, data.frame(x1 = x_ord, tau = tau))
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+        lines(x_ord, curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    # quantreg
+    plot(x, y,
+        pch = 20, cex = 0.3,
+        main = "quantreg", col = "grey"
+    )
+    fit_quanreg <- list()
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        fit_quanreg[[i]] <- rqss(y ~ qss(x, constraint = "N"),
+            tau = tau, data = data.frame(x, y)
+        )
+        curve <- fit_quanreg[[i]]$coef[1] + fit_quanreg[[i]]$coef[-1]
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+        lines(x_ord[-1], curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    # QuantifQuantile
+    fit_QQ <- QuantifQuantile(x_ord, y[ord], alpha = taus, x = x_ord, testN = 20)
+    ## plot,
+    plot(fit_QQ,
+        col.plot = c("grey", 2:6), xlab = "x", ylab = "y",
+        pch = 20, main = "QuantifQuantile"
+    )
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- fit_QQ$hatq_opt[i, ]
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+    }
+    # quantregGrowth non-crossing
+    fit_wp <- gcrq(y ~ ps(x), tau = taus, data = data.frame(x, y))
+    ## plot
+    plot(x, y,
+        pch = 20, cex = 0.3,
+        main = "quantregGrowth w L1 penalty", col = "grey"
+    )
+    fitted_y <- fit_wp$fitted.values[ord, ]
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- fitted_y[, i]
+        truth <- y_ord + qnorm(tau, mean = rep(0, n), sd = sigma)[ord]
+        lines(x_ord, truth, col = "grey", lty = 2)
+        lines(x_ord, curve, col = i + 1)
+    }
+    legend("topleft",
+        lty = 1, legend = lgd, col = 6:2,
+        lwd = 1, cex = 1, bty = "n"
+    )
+    # L2 loss
+    L2loss <- matrix(rep(0, 5 * 4), nrow = 4)
+    colnames(L2loss) <- c(.05, .25, .5, .75, .95)
+    rownames(L2loss) <- c(
+        "cq_reg", "quantreg", "QuantifQuantile", "quantregGrowth")
+
+    for (j in 1:20) {
+    ## test x
+    test_x <- runif(n, min(x), max(x))
+    test_y <- f4(test_x)
+    test_sigma <- 0.4 * (0.5 + test_x)
+
+
+    # True Quantiles
+    true_logquan <- function(x, tau) {
+        f4(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    }
+
+    # Quantiles
+    taus <- c(.05, .25, .5, .75, .95)
+
+
+        # cq.reg
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            truth <- true_logquan(test_x, taus[i])
+            L2loss[1, i] <- L2loss[1, i] + mean((predict(cq_fit, data.frame(x1 = test_x, tau = tau)) - truth)^2)
+        }
+
+
+    # quantreg
+    for (i in seq_along(taus)) {
+        fit <- fit_quanreg[[i]]
+        truth <- true_logquan(test_x, taus[i])
+        L2loss[2, i] <- L2loss[2, i] + mean((predict(fit, data.frame(x = test_x)) - truth)^2)
+    }
+
+
+    # QuantifQuantile
+    fit_QQ_new <- QuantifQuantile(x, y, x = test_x, alpha = taus, testN = 37)
+    ## l2loss
+    for (i in seq_along(taus)) {
+        truth <- true_logquan(test_x, taus[i])
+        L2loss[3, i] <- L2loss[3, i] + mean((fit_QQ_new$hatq_opt[i, ] - truth)^2)
+    }
+
+    # quantregGrowth non-crossing+ monotone
+        ## l2loss
+    test_fit <- predict(fit_wp, data.frame(x = test_x))
+    for (i in seq_along(taus)) {
+        truth <- true_logquan(test_x, taus[i])
+        L2loss[4, i] <- L2loss[4, i] + mean((test_fit[, i] - truth)^2)
+    }
+
+    ##print(j)
+    }
+    return(L2loss)
+}
+```
+
+### L2loss
+```{r, out.width = "100%", fig.dim = c(12, 12)}
+L2loss <- sin_code()
+round(L2loss / 20, 3)
+round(rowMeans(L2loss / 20), 3)
+```

@@ -1,0 +1,35 @@
+---
+Title: "Presentation: scenarios"
+author: ""
+date: ""
+---
+
+```{r, include=F}
+devtools::load_all()
+```
+```{r}
+v_gmean <- c("linear", "log", "sin", "lsin", "sqrtsin")
+v_xsig <- c("const", "linear", "quad")
+v_derr <- c("norm", "chisq3", "t3", "t1")
+```
+```{r scenario, out.width = "100%", fig.dim = c(16, 20)}
+par(mfrow = c(5, 4))
+par(mar = c(0.1, 0.1, 0.1, 0.1))
+x <- sort(runif(512))
+
+xsig <- "linear"
+for (gmean in v_gmean) {
+    for (derr in v_derr) {
+        y <- obs_f(x, gmean = gmean, xsig = xsig, derr = derr)
+        #xlim <- grDevices::extendrange(x, f = .1)
+        #ylim <- grDevices::extendrange(y, f = .1)
+        plot(x, y, type = "p", pch = 16, cex = 0.8, col = "grey",
+        xlab = "", ylab = "",
+        xaxt = "n", yaxt = "n")#xlim = xlim, ylim = ylim, 
+        for (tau in seq(0.05, 0.95, length.out = 3)) {
+            truth <- truth_f(x, tau, gmean = gmean, xsig = xsig, derr = derr)
+            lines(x, truth)
+        }
+    }
+}
+```

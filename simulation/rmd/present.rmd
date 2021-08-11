@@ -1,0 +1,207 @@
+---
+Title: "Presentation: cq.reg"
+author: ""
+date: ""
+---
+
+```{r, include=F}
+devtools::load_all()
+```
+
+```{r}
+load("sim_compare.RData")
+taus <- seq(0.05, 0.95, length.out = 10)
+```
+
+```{r, draw functions,  include=F}
+lgd <- c(
+    expression(paste(tau, "=0.05")),
+    expression(paste(tau, "=0.25")),
+    expression(paste(tau, "=0.5")),
+    expression(paste(tau, "=0.75")),
+    expression(paste(tau, "=0.95"))
+)
+
+lgd <- rev(lgd)
+# linear
+f1 <- function(x) {0.2 + 0.4 * x}
+# logarithm
+f2 <- function(x) {log(x)}
+# sinusoidal
+f3 <- function(x) {sin(2 * pi * x)}
+# square root sinusoidal
+f4 <- function(x) {
+    sqrt(x * (1 - x)) * sin(2 * pi * (1 + 2 ^ (-7 / 5)) / (x + 2 ^ (-7 / 5)))
+}
+obs_f <- function(sim, x) {
+    if (sim == 1) {
+        f1(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 2) {
+        f2(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 3) {
+        f3(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    } else if (sim == 4) {
+        f4(x) + rnorm(length(x), mean = rep(0, length(x)), sd = 0.4 * (0.5 + x))
+    }
+}
+truth_f <- function(sim, x, tau) {
+    if (sim == 1) {
+        f1(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 2) {
+        f2(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 3) {
+        f3(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    } else if (sim == 4) {
+        f4(x) + qnorm(tau, sd = 0.4 * (0.5 + x))
+    }
+}
+draw_qs <- function(x, y, sim, qs_fit, ...) {
+    plot(x, y,
+        pch = 20, cex = 0.3, main = "quantile sheets",
+        sub = paste("smooth=", 0.1), col = "grey")
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- predict(qs_fit, data.frame(tau = tau, x1 = x))
+        truth <- truth_f(sim, x, tau)
+        lines(x, truth, col = "grey", lty = 2)
+        lines(x, curve, col = i + 1)
+    }
+}
+
+draw_sq <- function(x, y, sim, smooth_fit, ...) {
+        plot(x, y,
+            pch = 20, cex = 0.3, main = "smooth_quan",
+            sub = paste("smooth=", 0.1), col = "grey")
+
+        curves <- cq_prediction(taus, smooth_fit)
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- curves[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+}
+
+draw_coco <- function(x, y, sim, coco_fit, ...) {
+        plot(x, y,
+            pch = 20, cex = 0.3, main = "constrained_quan",
+            sub = paste("smooth", 0.1), col = "grey")
+
+        curves <- cq_prediction(taus, coco_fit)
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- curves[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+}
+
+
+draw_cq <- function(x, y, sim, cq_fit, ...) {
+    plot(x, y,
+        pch = 20, cex = 0.3, main = "cq.reg",
+        sub = paste("span=", 0.05), col = "grey")
+    for (i in seq_along(taus)) {
+        tau <- taus[i]
+        curve <- predict(cq_fit, data.frame(tau = tau, x1 = x))
+        truth <- truth_f(sim, x, tau)
+        lines(x, truth, col = "grey", lty = 2)
+        lines(x, curve, col = i + 1)
+    }
+}
+
+draw_qr <- function(x, y, sim, fit_quanreg, ...) {
+        plot(x, y,
+            pch = 20, cex = 0.3,
+            main = "quantreg", col = "grey"
+        )
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- fit_quanreg[[i]]$coef[1] + fit_quanreg[[i]]$coef[-1]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x[-1], curve, col = i + 1)
+        }
+}
+
+draw_gq2 <- function(x, y, sim, fit_wp, ...) {
+        plot(x, y,
+            pch = 20, cex = 0.3,
+            main = "quantregGrowth w L1 penalty", col = "grey"
+        )
+        fitted_y <- fit_wp$fitted.values
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- fitted_y[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+}
+
+draw_gq4 <- function(x, y, sim, fit_wp, ...) {
+        plot(x, y,
+            pch = 20, cex = 0.3,
+            main = "quantregGrowth w L1 penalty", col = "grey"
+        )
+        fitted_y <- fit_wp$fitted.values
+        for (i in seq_along(taus)) {
+            tau <- taus[i]
+            curve <- fitted_y[, i]
+            truth <- truth_f(sim, x, tau)
+            lines(x, truth, col = "grey", lty = 2)
+            lines(x, curve, col = i + 1)
+        }
+}
+```
+```{r compe2 draw, out.width = "100%", fig.dim = c(12, 24)}
+par(mfrow = c(4, 2))
+gam_fit <- comp2[[2]][[1]]
+scam_fit <- comp2[[2]][[2]]
+smooth_fit <- comp2[[2]][[3]]
+coco_fit <- comp2[[2]][[4]]
+cq_fit <- comp2[[2]][[5]]
+fit_quanreg <- comp2[[2]][[6]]
+fit_wp <- comp2[[2]][[7]]
+x <- scam_fit$x; y <- scam_fit$y
+
+draw_qs(x, y, 2, gam_fit)
+draw_qs(x, y, 2, scam_fit)
+draw_sq(x, y, 2, smooth_fit)
+draw_coco(x, y, 2, coco_fit)
+draw_cq(x, y, 2, cq_fit)
+draw_qr(x, y, 2, fit_quanreg)
+draw_gq2(x, y, 2, fit_wp)
+```
+```{r comp2 error}
+#comp2[[1]]
+rowMeans(comp2[[1]])
+```
+
+
+
+```{r compe4 draw, out.width = "100%", fig.dim = c(12, 24)}
+par(mfrow = c(4, 2))
+gam_fit <- comp4[[2]][[1]]
+scam_fit <- comp4[[2]][[2]]
+smooth_fit <- comp4[[2]][[3]]
+coco_fit <- comp4[[2]][[4]]
+cq_fit <- comp4[[2]][[5]]
+fit_quanreg <- comp4[[2]][[6]]
+fit_wp <- comp4[[2]][[7]]
+x <- scam_fit$x; y <- scam_fit$y
+
+draw_qs(x, y, 4, gam_fit)
+draw_qs(x, y, 4, scam_fit)
+draw_sq(x, y, 4, smooth_fit)
+draw_coco(x, y, 4, coco_fit)
+draw_cq(x, y, 4, cq_fit)
+draw_qr(x, y, 4, fit_quanreg)
+draw_gq4(x, y, 4, fit_wp)
+```
+```{r comp4 error}
+#comp4[[1]]
+rowMeans(comp4[[1]])
+```
